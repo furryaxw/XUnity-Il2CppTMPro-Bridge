@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <AssemblyName>XUnity.Il2CppTMProBridge</AssemblyName>
+    <RootNamespace>XUnity.Il2CppTMProBridge</RootNamespace>
+    <Version>0.1.0</Version>
+    <AssemblyVersion>0.1.0.0</AssemblyVersion>
+    <FileVersion>0.1.0.0</FileVersion>
+    <Description>Bridges XUnity.AutoTranslator to Il2CppTMPro text components.</Description>
+    <Authors>furryAxw</Authors>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/furryaxw/XUnity-Il2CppTMPro-Bridge</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/furryaxw/XUnity-Il2CppTMPro-Bridge.git</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <SprocketGameRoot Condition="'$(SprocketGameRoot)' == '' and '$(SPROCKET_GAME_ROOT)' != ''">$(SPROCKET_GAME_ROOT)</SprocketGameRoot>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\XUnity.Il2CppTMProBridge.Core\TranslationPolicy.cs" Link="Core\TranslationPolicy.cs" />
+    <Compile Include="..\XUnity.Il2CppTMProBridge.Core\ReentrancyGuard.cs" Link="Core\ReentrancyGuard.cs" />
+    <Reference Include="Il2CppInterop.Runtime" HintPath="$(SprocketGameRoot)\MelonLoader\net6\Il2CppInterop.Runtime.dll" Private="false" />
+    <Reference Include="Il2Cppmscorlib" HintPath="$(SprocketGameRoot)\MelonLoader\Il2CppAssemblies\Il2Cppmscorlib.dll" Private="false" />
+    <Reference Include="MelonLoader" HintPath="$(SprocketGameRoot)\MelonLoader\net6\MelonLoader.dll" Private="false" />
+    <Reference Include="Unity.TextMeshPro" HintPath="$(SprocketGameRoot)\MelonLoader\Il2CppAssemblies\Unity.TextMeshPro.dll" Private="false" />
+    <Reference Include="UnityEngine.CoreModule" HintPath="$(SprocketGameRoot)\MelonLoader\Il2CppAssemblies\UnityEngine.CoreModule.dll" Private="false" />
+    <Reference Include="UnityEngine.AssetBundleModule" HintPath="$(SprocketGameRoot)\MelonLoader\Il2CppAssemblies\UnityEngine.AssetBundleModule.dll" Private="false" />
+    <Reference Include="UnityEngine.TextRenderingModule" HintPath="$(SprocketGameRoot)\MelonLoader\Il2CppAssemblies\UnityEngine.TextRenderingModule.dll" Private="false" />
+    <Reference Include="UnityEngine.UI" HintPath="$(SprocketGameRoot)\MelonLoader\Il2CppAssemblies\UnityEngine.UI.dll" Private="false" />
+    <Reference Include="XUnity.AutoTranslator.Plugin.Core" HintPath="$(SprocketGameRoot)\UserLibs\XUnity.AutoTranslator.Plugin.Core.dll" Private="false" />
+  </ItemGroup>
+
+  <Target Name="ValidateSprocketDependencies" BeforeTargets="ResolveReferences">
+    <Error Condition="'$(SprocketGameRoot)' == ''" Text="Set SPROCKET_GAME_ROOT or SprocketGameRoot to the Sprocket installation directory." />
+    <Error Condition="!Exists('$(SprocketGameRoot)\MelonLoader\net6\MelonLoader.dll')" Text="MelonLoader.dll was not found. Set SPROCKET_GAME_ROOT or SprocketGameRoot to the Sprocket installation directory." />
+    <Error Condition="!Exists('$(SprocketGameRoot)\MelonLoader\Il2CppAssemblies\Unity.TextMeshPro.dll')" Text="The generated Unity.TextMeshPro.dll was not found under $(SprocketGameRoot)\MelonLoader\Il2CppAssemblies." />
+    <Error Condition="!Exists('$(SprocketGameRoot)\MelonLoader\Il2CppAssemblies\UnityEngine.UI.dll')" Text="The generated UnityEngine.UI.dll was not found under $(SprocketGameRoot)\MelonLoader\Il2CppAssemblies." />
+    <Error Condition="!Exists('$(SprocketGameRoot)\UserLibs\XUnity.AutoTranslator.Plugin.Core.dll')" Text="XUnity.AutoTranslator.Plugin.Core.dll was not found under $(SprocketGameRoot)\UserLibs." />
+  </Target>
+
+  <Target Name="PostBuild" AfterTargets="PostBuildEvent" Condition="'$(SkipModDeploy)' != 'true'">
+    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(SprocketGameRoot)\Mods" />
+  </Target>
+</Project>

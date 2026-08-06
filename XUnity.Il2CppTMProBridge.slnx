@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="src/XUnity.Il2CppTMProBridge.Core/XUnity.Il2CppTMProBridge.Core.csproj" />
+  <Project Path="src/XUnity.Il2CppTMProBridge/XUnity.Il2CppTMProBridge.csproj" />
+  <Project Path="tests/XUnity.Il2CppTMProBridge.Tests/XUnity.Il2CppTMProBridge.Tests.csproj" />
+</Solution>
