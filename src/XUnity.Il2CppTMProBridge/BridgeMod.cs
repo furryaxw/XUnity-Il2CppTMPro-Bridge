@@ -44,6 +44,7 @@ public sealed class BridgeMod : MelonMod
     private readonly Dictionary<string, DateTime> _nextErrorLog = new();
     private readonly List<UnityEngine.Object> _keptAssets = new();
     private readonly ReentrancyGuard<nint> _writeGuard = new();
+    private readonly List<KeyValuePair<string, string>> _substitutions = new();
     private MelonPreferences_Entry<bool>? _verboseLogging;
     private NativeHook<TextSetterDelegate>? _textSetterHook;
     private NativeHook<OnEnableDelegate>? _textMeshProOnEnableHook;
@@ -62,6 +63,7 @@ public sealed class BridgeMod : MelonMod
         _mainThreadId = Environment.CurrentManagedThreadId;
         var preferences = MelonPreferences.CreateCategory("XUnityIl2CppTMProBridge", "XUnity Il2CppTMPro Bridge");
         _verboseLogging = preferences.CreateEntry("VerboseLogging", false, "Verbose logging");
+        LoadSubstitutions();
 
         LoadFallbackFont();
 
@@ -226,6 +228,8 @@ public sealed class BridgeMod : MelonMod
                 {
                     return ProcessResult.None;
                 }
+
+                translation = RestoreTemplateVariables(current, translation);
 
                 _cache[pointer] = new CacheEntry(instanceId, current, translation);
                 var fontChanged = ApplyFallbackFont(component);
@@ -515,6 +519,233 @@ public sealed class BridgeMod : MelonMod
         }
 
         return null;
+    }
+
+    private void LoadSubstitutions()
+    {
+        try
+        {
+            var gameRoot = new DirectoryInfo(UnityEngine.Application.dataPath).Parent!.FullName;
+            var translationRoot = Path.Combine(gameRoot, "AutoTranslator", "Translation");
+            if (!Directory.Exists(translationRoot))
+            {
+                return;
+            }
+
+            foreach (var langDir in Directory.GetDirectories(translationRoot))
+            {
+                var textDir = Path.Combine(langDir, "Text");
+                var file = Path.Combine(textDir, "_Substitutions.txt");
+                if (!File.Exists(file))
+                {
+                    continue;
+                }
+
+                foreach (var rawLine in File.ReadLines(file, Encoding.UTF8))
+                {
+                    var line = rawLine.Trim();
+                    if (line.Length == 0 || line.StartsWith(";", StringComparison.Ordinal) || line.StartsWith("#", StringComparison.Ordinal))
+                    {
+                        continue;
+                    }
+
+                    var separator = line.IndexOf('=');
+                    if (separator <= 0)
+                    {
+                        continue;
+                    }
+
+                    var key = line[..separator].Trim();
+                    var value = line[(separator + 1)..].Trim();
+                    _substitutions.Add(new KeyValuePair<string, string>(key, value));
+                }
+            }
+
+            if (_substitutions.Count > 0)
+            {
+                LoggerInstance.Msg($"Loaded {_substitutions.Count} template substitutions.");
+            }
+        }
+        catch (Exception exception)
+        {
+            LogExceptionLimited("substitutions", exception);
+        }
+    }
+
+    private string RestoreTemplateVariables(string original, string translation)
+    {
+        try
+        {
+            var arguments = TemplatizeByReplacementsAndNumbers(original);
+            if (arguments is null || arguments.Count == 0)
+            {
+                return translation;
+            }
+
+            foreach (var kvp in arguments)
+            {
+                translation = translation.Replace(kvp.Key, kvp.Value);
+            }
+        }
+        catch (Exception exception)
+        {
+            LogExceptionLimited("template-restore", exception);
+        }
+
+        return translation;
+    }
+
+    private Dictionary<string, string>? TemplatizeByReplacementsAndNumbers(string text)
+    {
+        var offset = 0;
+        string template = text;
+        Dictionary<string, string>? arguments = null;
+
+        if (_substitutions.Count > 0)
+        {
+            var byReplacements = TemplatizeByReplacements(template, _substitutions, ref offset);
+            if (byReplacements is not null)
+            {
+                arguments = byReplacements;
+                template = byReplacements["__template__"];
+                arguments.Remove("__template__");
+            }
+        }
+
+        var byNumbers = TemplatizeByNumbers(template, offset);
+        if (byNumbers is not null)
+        {
+            if (arguments is null)
+            {
+                arguments = new Dictionary<string, string>();
+            }
+
+            foreach (var kvp in byNumbers)
+            {
+                arguments[kvp.Key] = kvp.Value;
+            }
+        }
+
+        return arguments;
+    }
+
+    private static Dictionary<string, string>? TemplatizeByReplacements(string text, List<KeyValuePair<string, string>> replacements, ref int offset)
+    {
+        var arguments = new Dictionary<string, string>();
+        var arg = (char)('A' + offset);
+        foreach (var kvp in replacements)
+        {
+            var original = kvp.Key;
+            var replacement = kvp.Value;
+            if (string.IsNullOrEmpty(original))
+            {
+                continue;
+            }
+
+            if (string.IsNullOrEmpty(replacement))
+            {
+                int idx;
+                while ((idx = text.IndexOf(original, StringComparison.InvariantCulture)) != -1)
+                {
+                    text = text.Remove(idx, original.Length);
+                }
+            }
+            else
+            {
+                string? key = null;
+                int idx;
+                while ((idx = text.IndexOf(original, StringComparison.InvariantCulture)) != -1)
+                {
+                    if (key is null)
+                    {
+                        key = "{{" + arg + "}}";
+                        arguments[key] = replacement;
+                        arg++;
+                    }
+
+                    text = text.Remove(idx, original.Length).Insert(idx, key);
+                }
+            }
+        }
+
+        if (arguments.Count == 0)
+        {
+            return null;
+        }
+
+        offset = arg - 'A';
+        arguments["__template__"] = text;
+        return arguments;
+    }
+
+    private static Dictionary<string, string>? TemplatizeByNumbers(string text, int offset)
+    {
+        var arguments = new Dictionary<string, string>();
+        var arg = (char)('A' + offset);
+        var isHandling = false;
+        var carg = new StringBuilder();
+        var sidx = -1;
+        var lidx = -1;
+
+        for (var i = 0; i < text.Length; i++)
+        {
+            var c = text[i];
+            if (isHandling)
+            {
+                if (IsTemplateNumber(c))
+                {
+                    lidx = i;
+                }
+
+                if (IsNumberOrDotOrControl(c))
+                {
+                    carg.Append(c);
+                }
+                else
+                {
+                    var diff = i - lidx - 1;
+                    carg.Remove(carg.Length - diff, diff);
+                    var variable = carg.ToString();
+                    var argName = "{{" + arg + "}}";
+                    arguments[argName] = variable;
+                    arg++;
+                    carg.Clear();
+                    isHandling = false;
+                    text = text.Remove(sidx, lidx - sidx + 1).Insert(sidx, argName);
+                    i += argName.Length - variable.Length;
+                }
+            }
+            else if (IsTemplateNumber(c))
+            {
+                isHandling = true;
+                carg.Clear();
+                carg.Append(c);
+                sidx = i;
+                lidx = i;
+            }
+        }
+
+        if (carg.Length > 0)
+        {
+            var diff = text.Length - lidx - 1;
+            carg.Remove(carg.Length - diff, diff);
+            var variable = carg.ToString();
+            var argName = "{{" + arg + "}}";
+            arguments[argName] = variable;
+            text = text.Remove(sidx, text.Length - sidx - diff).Insert(sidx, argName);
+        }
+
+        return arguments.Count > 0 ? arguments : null;
+    }
+
+    private static bool IsTemplateNumber(char c)
+    {
+        return (c >= '0' && c <= '9') || (c >= '０' && c <= '９');
+    }
+
+    private static bool IsNumberOrDotOrControl(char c)
+    {
+        return (c >= '*' && c <= ':') || (c >= '０' && c <= '９');
     }
 
     private void RegisterGlobalFallback()
