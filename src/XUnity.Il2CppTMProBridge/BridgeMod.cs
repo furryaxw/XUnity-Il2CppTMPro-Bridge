@@ -11,7 +11,16 @@ using XUnity.AutoTranslator.Plugin.Core;
 using XUnity.Il2CppTMProBridge.Core;
 using XuaAutoTranslator = global::XUnity.AutoTranslator.Plugin.Core.AutoTranslator;
 
-[assembly: MelonInfo(typeof(XUnity.Il2CppTMProBridge.BridgeMod), "XUnity Il2CppTMPro Bridge", "0.1.0", "furryAxw")]
+[assembly: MelonInfo(typeof(XUnity.Il2CppTMProBridge.BridgeMod), "XUnity Il2CppTMPro Bridge", "0.1.1", "furryAxw")]
+[assembly: System.Reflection.AssemblyMetadata("Sprocket.Mod.Id", "furryaxw.xunity-il2cpptmpro-bridge")]
+[assembly: System.Reflection.AssemblyMetadata("Sprocket.Mod.DisplayName", "XUnity Il2CppTMPro Bridge")]
+[assembly: System.Reflection.AssemblyMetadata("Sprocket.Mod.Description", "Bridges XUnity.AutoTranslator to Il2CppInterop-generated Il2CppTMPro text components in MelonLoader IL2CPP games.")]
+[assembly: System.Reflection.AssemblyMetadata("Sprocket.Mod.Authors", "furryAxw")]
+[assembly: System.Reflection.AssemblyMetadata("Sprocket.Mod.Repository", "furryaxw/XUnity-Il2CppTMPro-Bridge")]
+[assembly: System.Reflection.AssemblyMetadata("Sprocket.Mod.Category", "library")]
+[assembly: System.Reflection.AssemblyMetadata("Sprocket.Mod.License", "MIT")]
+// 代码里 `using XUnity.AutoTranslator.Plugin.Core`：声明依赖，保证它先加载。
+[assembly: MelonAdditionalDependencies("XUnity.AutoTranslator.Plugin.Core")]
 
 namespace XUnity.Il2CppTMProBridge;
 
@@ -67,7 +76,7 @@ public sealed class BridgeMod : MelonMod
 
         LoadFallbackFont();
 
-        LoggerInstance.Msg($"XUnity {typeof(XuaAutoTranslator).Assembly.GetName().Version} detected.");
+        LoggerInstance.Msg($"[XTM] XUnity {typeof(XuaAutoTranslator).Assembly.GetName().Version} detected.");
         LoggerInstance.Msg($"{typeof(TMP_Text).FullName} detected.");
 
         _textSetterHook = CreateNativeHook("TMP_Text.set_text", typeof(TMP_Text), TextSetterMethodInfoField, TextSetterDetourDelegate);
@@ -84,7 +93,7 @@ public sealed class BridgeMod : MelonMod
         }
         else
         {
-            LoggerInstance.Msg("Waiting for XUnity.AutoTranslator initialization.");
+            LoggerInstance.Msg("[XTM] Waiting for XUnity.AutoTranslator initialization.");
         }
     }
 
@@ -120,7 +129,7 @@ public sealed class BridgeMod : MelonMod
     private void OnTranslatorInitialized()
     {
         _translatorReady = true;
-        LoggerInstance.Msg("XUnity.AutoTranslator initialization completed.");
+        LoggerInstance.Msg("[XTM] XUnity.AutoTranslator initialization completed.");
         ScheduleScan(TimeSpan.FromMilliseconds(500));
     }
 
@@ -268,14 +277,14 @@ public sealed class BridgeMod : MelonMod
             var fontPath = Path.Combine(gameRoot, configuredPath ?? Path.Combine("AutoTranslator", "arialuni_sdf_u2022"));
             if (!File.Exists(fontPath))
             {
-                LoggerInstance.Warning($"Fallback TMP font not found: {fontPath}");
+                LoggerInstance.Warning($"[XTM] Fallback TMP font not found: {fontPath}");
                 return;
             }
 
             var bundlePtr = LoadFromFileInternal(IL2CPP.ManagedStringToIl2Cpp(fontPath), 0u, 0UL);
             if (bundlePtr == IntPtr.Zero)
             {
-                LoggerInstance.Warning($"Could not load fallback TMP font bundle: {fontPath}");
+                LoggerInstance.Warning($"[XTM] Could not load fallback TMP font bundle: {fontPath}");
                 return;
             }
 
@@ -290,14 +299,14 @@ public sealed class BridgeMod : MelonMod
                 Il2CppType.Of<TMP_FontAsset>().Pointer);
             if (arrayPtr == IntPtr.Zero)
             {
-                LoggerInstance.Warning($"Fallback TMP font bundle contained no assets: {fontPath}");
+                LoggerInstance.Warning($"[XTM] Fallback TMP font bundle contained no assets: {fontPath}");
                 return;
             }
 
             var assets = new Il2CppReferenceArray<TMP_FontAsset>(arrayPtr);
             if (assets.Length == 0 || assets[0] is null)
             {
-                LoggerInstance.Warning($"Fallback TMP font asset is empty; the AssetBundle version may be incompatible, replace the font bundle: {fontPath}");
+                LoggerInstance.Warning($"[XTM] Fallback TMP font asset is empty; the AssetBundle version may be incompatible, replace the font bundle: {fontPath}");
                 return;
             }
 
@@ -332,7 +341,7 @@ public sealed class BridgeMod : MelonMod
 
             PrepareFallbackFont(bundlePtr);
             UnityEngine.Object.DontDestroyOnLoad(_fontAsset);
-            LoggerInstance.Msg("Loaded fallback TMP font: " + fontPath);
+            LoggerInstance.Msg("[XTM] Loaded fallback TMP font: " + fontPath);
 
             RegisterGlobalFallback();
         }
@@ -420,7 +429,7 @@ public sealed class BridgeMod : MelonMod
             }
             else if (!IsAlive(material))
             {
-                LoggerInstance.Warning("Fallback TMP font has no usable material.");
+                LoggerInstance.Warning("[XTM] Fallback TMP font has no usable material.");
             }
 
             // Asset bundles only serialize the tables. Rebuild TMP's runtime lookup
@@ -472,7 +481,7 @@ public sealed class BridgeMod : MelonMod
             return shader;
         }
 
-        LoggerInstance.Warning("Could not resolve a TextMesh Pro distance-field shader.");
+        LoggerInstance.Warning("[XTM] Could not resolve a TextMesh Pro distance-field shader.");
         return null;
     }
 
@@ -563,7 +572,7 @@ public sealed class BridgeMod : MelonMod
 
             if (_substitutions.Count > 0)
             {
-                LoggerInstance.Msg($"Loaded {_substitutions.Count} template substitutions.");
+                LoggerInstance.Msg($"[XTM] Loaded {_substitutions.Count} template substitutions.");
             }
         }
         catch (Exception exception)
@@ -785,11 +794,11 @@ public sealed class BridgeMod : MelonMod
             if (!contains)
             {
                 list.Add(_fontAsset);
-                LoggerInstance.Msg("Global TMP fallback registered via TMP_Settings.");
+                LoggerInstance.Msg("[XTM] Global TMP fallback registered via TMP_Settings.");
             }
             else
             {
-                LoggerInstance.Msg("Global TMP fallback already present.");
+                LoggerInstance.Msg("[XTM] Global TMP fallback already present.");
             }
         }
         catch (Exception exception)
@@ -874,7 +883,7 @@ public sealed class BridgeMod : MelonMod
         }
         catch (Exception exception)
         {
-            LoggerInstance.Warning($"Could not prepare {label} hook: {exception.GetType().Name}: {exception.Message}");
+            LoggerInstance.Warning($"[XTM] Could not prepare {label} hook: {exception.GetType().Name}: {exception.Message}");
             return null;
         }
     }
@@ -889,11 +898,11 @@ public sealed class BridgeMod : MelonMod
         try
         {
             hook.Attach();
-            LoggerInstance.Msg($"Hooked {label}.");
+            LoggerInstance.Msg($"[XTM] Hooked {label}.");
         }
         catch (Exception exception)
         {
-            LoggerInstance.Warning($"Could not hook {label}: {exception.GetType().Name}: {exception.Message}");
+            LoggerInstance.Warning($"[XTM] Could not hook {label}: {exception.GetType().Name}: {exception.Message}");
         }
     }
 
@@ -910,7 +919,7 @@ public sealed class BridgeMod : MelonMod
         }
         catch (Exception exception)
         {
-            LoggerInstance.Warning($"Could not detach {label}: {exception.GetType().Name}: {exception.Message}");
+            LoggerInstance.Warning($"[XTM] Could not detach {label}: {exception.GetType().Name}: {exception.Message}");
         }
     }
 
